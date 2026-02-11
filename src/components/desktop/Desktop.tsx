@@ -7,7 +7,8 @@ import { DesktopIcon } from './DesktopIcon'
 import { Notepad } from './apps/Notepad'
 import { FolderView, FolderItem } from './apps/FolderView'
 import { Chat } from './apps/Chat'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import * as Sentry from '@sentry/nextjs'
 
 const INSTALL_GUIDE_CONTENT = `# SentryOS Install Guide
 
@@ -58,7 +59,25 @@ function DesktopContent() {
   const { windows, openWindow } = useWindowManager()
   const [selectedIcon, setSelectedIcon] = useState<string | null>(null)
 
+  useEffect(() => {
+    Sentry.logger.info('desktop_loaded', {
+      timestamp: new Date().toISOString(),
+      user_agent: typeof window !== 'undefined' ? window.navigator.userAgent : 'unknown'
+    })
+
+    Sentry.metrics.increment('desktop.sessions.started', 1)
+  }, [])
+
   const openInstallGuide = () => {
+    Sentry.logger.info('desktop_icon_opened', {
+      icon_id: 'install-guide',
+      icon_label: 'Install Guide',
+      icon_type: 'document'
+    })
+
+    Sentry.metrics.increment('desktop.icons.opened', 1, {
+      tags: { icon_type: 'document', icon_id: 'install-guide' }
+    })
     openWindow({
       id: 'install-guide',
       title: 'Install Guide.md',
@@ -76,6 +95,16 @@ function DesktopContent() {
   }
 
   const openChatWindow = () => {
+    Sentry.logger.info('desktop_icon_opened', {
+      icon_id: 'chat',
+      icon_label: 'Chat',
+      icon_type: 'chat'
+    })
+
+    Sentry.metrics.increment('desktop.icons.opened', 1, {
+      tags: { icon_type: 'chat', icon_id: 'chat' }
+    })
+
     openWindow({
       id: 'chat',
       title: 'SentryOS Chat',
@@ -93,6 +122,16 @@ function DesktopContent() {
   }
 
   const openAgentsFolder = () => {
+    Sentry.logger.info('desktop_icon_opened', {
+      icon_id: 'agents-folder',
+      icon_label: 'Agents',
+      icon_type: 'folder'
+    })
+
+    Sentry.metrics.increment('desktop.icons.opened', 1, {
+      tags: { icon_type: 'folder', icon_id: 'agents-folder' }
+    })
+
     const agentsFolderItems: FolderItem[] = []
 
     openWindow({
