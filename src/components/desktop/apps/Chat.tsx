@@ -6,6 +6,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import * as Sentry from '@sentry/nextjs'
 
 interface Message {
   id: string
@@ -78,10 +79,26 @@ export function Chat() {
       timestamp: new Date()
     }
 
+    Sentry.logger.info('chat_message_sent', {
+      message_id: userMessage.id,
+      message_length: userMessage.content.length,
+      conversation_length: messages.length
+    })
+
+    Sentry.metrics.increment('chat.messages.sent', 1, {
+      tags: { source: 'client' }
+    })
+
+    Sentry.metrics.distribution('chat.message.client_length', userMessage.content.length, {
+      unit: 'character'
+    })
+
     setMessages(prev => [...prev, userMessage])
     setInput('')
     setIsLoading(true)
     setCurrentTool(null)
+
+    const requestStartTime = Date.now()
 
     try {
       const response = await fetch('/api/chat', {
@@ -175,15 +192,48 @@ export function Chat() {
       // If no content was streamed, remove the placeholder
       if (!streamingContent) {
         setMessages(prev => prev.filter(msg => msg.id !== streamingMessageId))
+
+        Sentry.logger.warn('chat_empty_response', {
+          request_duration: Date.now() - requestStartTime
+        })
+      } else {
+        const responseDuration = Date.now() - requestStartTime
+
+        Sentry.logger.info('chat_response_received', {
+          response_length: streamingContent.length,
+          duration_ms: responseDuration
+        })
+
+        Sentry.metrics.increment('chat.messages.received', 1)
+
+        Sentry.metrics.distribution('chat.response.duration', responseDuration, {
+          unit: 'millisecond',
+          tags: { status: 'success' }
+        })
+
+        Sentry.metrics.distribution('chat.response.length', streamingContent.length, {
+          unit: 'character'
+        })
       }
-    } catch {
-      const errorMessage: Message = {
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+
+      Sentry.logger.error('chat_request_error', {
+        error: errorMessage,
+        duration_ms: Date.now() - requestStartTime
+      })
+
+      Sentry.metrics.increment('chat.errors.client', 1, {
+        tags: { error_type: 'request_failed' }
+      })
+
+      const errorMsg: Message = {
         id: crypto.randomUUID(),
         role: 'assistant',
         content: 'Sorry, I encountered an error. Please check your Claude credentials are configured correctly.',
         timestamp: new Date()
       }
-      setMessages(prev => [...prev, errorMessage])
+      setMessages(prev => [...prev, errorMsg])
     } finally {
       setIsLoading(false)
       setCurrentTool(null)
